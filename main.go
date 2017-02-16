@@ -5,7 +5,7 @@ import (
 	"log"
 	"fmt"
 	"os"
-
+	
 	"github.com/o3ma/o3"
 )
 
@@ -19,21 +19,21 @@ func main() {
 		rid     = "ZX9TZZ7P" // e.g. ZX9TZZ7P
 		testMsg = "Say something!"
 	)
-
+	
 	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick)
-
+	
 	go sendTestMsg(tr, abpath, rid, testMsg, ctx, sendMsgChan)
-
+	
 	receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
 }
 
 
 func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
-		var (
-			tr      o3.ThreemaRest
-			tid     o3.ThreemaID
-		)
-
+	var (
+		tr      o3.ThreemaRest
+		tid     o3.ThreemaID
+	)
+	
 	// check whether an id file exists or else create a new one
 	if _, err := os.Stat(idpath); err != nil {
 		var err error
@@ -56,11 +56,11 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.T
 		}
 	}
 	fmt.Printf("Using ID: %s\n", tid.String())
-
+	
 	tid.Nick = o3.NewPubNick(pubnick)
-
+	
 	ctx := o3.NewSessionContext(tid)
-
+	
 	//check if we can load an addressbook
 	if _, err := os.Stat(abpath); !os.IsNotExist(err) {
 		fmt.Printf("Loading addressbook from %s\n", abpath)
@@ -77,7 +77,7 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.T
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	return tr, tid, ctx, receiveMsgChan, sendMsgChan
 }
 
@@ -95,7 +95,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 		}
 		// add them to our address book
 		ctx.ID.Contacts.Add(myContact)
-
+		
 		//and save the address book
 		fmt.Printf("Saving addressbook to %s\n", abpath)
 		err = ctx.ID.Contacts.SaveTo(abpath)
@@ -104,7 +104,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 			log.Fatal(err)
 		}
 	}
-
+	
 	// send our initial message to our recipient
 	fmt.Println("Sending initial message to " + rid + ": " + testMsg)
 	err := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
@@ -115,7 +115,6 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 
 
 func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
-
 	// handle incoming messages
 	for receivedMessage := range receiveMsgChan {
 		if receivedMessage.Err != nil {
