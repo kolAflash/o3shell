@@ -1,34 +1,73 @@
-// This is a small bot that messages someone (ZX9TZZ7P) and replies to everything with a qouted echo
+// This is a small bot that messages someone and replies to everything with a qouted echo
+// Additionally you can send messages from commandline.
 package main
 
 import (
+	"bufio"
 	"log"
+	"flag"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	
 	"github.com/o3ma/o3"
 )
 
 
 func main() {
+	pass, idpath, abpath, pubnick, rid, testMsg, createID := parseArgs()
+	
+	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick, createID)
+	
+	go receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
+	
+	sendTestMsg(tr, abpath, rid, testMsg, ctx, sendMsgChan)
+	
+	sendLoop(tr, abpath, ctx, sendMsgChan)
+}
+
+
+func parseArgs() ([]byte, string, string, string, string, string, bool) {
+	cmdlnPubnick  := flag.String("nickname",        "parrot", "The nickname for the account (max. 32 chars).")
+	cmdlnConfdir  := flag.String("confdir",               "", "Path to the configuration directory.")
+	cmdlnPass     := flag.String("pass",          "01234567", "A string which must be at least 8 chars long.")
+	cmdlnTestID   := flag.String("testid",                "", "Send \"testmsg\" to this ID (8 character hex string).")
+	cmdlnTestMsg  := flag.String("testmsg", "Say something!", "Send this message to \"testid\".")
+	cmdlnCreateID := flag.Bool(  "createid",           false, "Create a new ID if nessesary without asking for confirmation.")
+	flag.Parse()
+	
 	var (
 		pass    = []byte{0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37} // 01234567
 		idpath  = "threema.id"
 		abpath  = "address.book"
-		pubnick = "parrot"
-		rid     = "ZX9TZZ7P" // e.g. ZX9TZZ7P
-		testMsg = "Say something!"
 	)
 	
-	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick)
+	cmdlnPubnickVal := *cmdlnPubnick
+	if len(cmdlnPubnickVal) > 32 { cmdlnPubnickVal = cmdlnPubnickVal[0:32] }
+	pubnick := cmdlnPubnickVal
 	
-	go sendTestMsg(tr, abpath, rid, testMsg, ctx, sendMsgChan)
+	rid := ""
+	ridRegex := regexp.MustCompile("\\A[0-9A-Z]{8}\\z")
+	cmdlnTestIDVal := ridRegex.FindString(strings.ToUpper(*cmdlnTestID))
+	if cmdlnTestIDVal != "" && len(cmdlnTestIDVal) == 8 { rid = cmdlnTestIDVal }
 	
-	receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
+	testMsg := *cmdlnTestMsg
+	
+	if len(*cmdlnPass) >= 8 { pass = []byte(*cmdlnPass) }
+	
+	if (*cmdlnConfdir) != "" {
+		idpath = (*cmdlnConfdir) + "/" + idpath
+		abpath = (*cmdlnConfdir) + "/" + abpath
+	}
+	
+	createId := *cmdlnCreateID
+	
+	return pass, idpath, abpath, pubnick, rid, testMsg, createId
 }
 
 
-func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
+func initialise(pass []byte, idpath string, abpath string, pubnick string, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
 	var (
 		tr      o3.ThreemaRest
 		tid     o3.ThreemaID
@@ -36,17 +75,28 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.T
 	
 	// check whether an id file exists or else create a new one
 	if _, err := os.Stat(idpath); err != nil {
-		var err error
-		tid, err = tr.CreateIdentity()
-		if err != nil {
-			fmt.Println("CreateIdentity failed")
-			log.Fatal(err)
+		if !createID {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Print("No existing ID found. Create a new one? Enter YES (upper case) or NO: ")
+			text, _ := reader.ReadString('\n')
+			createID = (text == "YES\n")
 		}
-		fmt.Printf("Saving ID to %s\n", idpath)
-		err = tid.SaveToFile(idpath, pass)
-		if err != nil {
-			fmt.Println("saving ID failed")
-			log.Fatal(err)
+		
+		if createID {
+			var err error
+			tid, err = tr.CreateIdentity()
+			if err != nil {
+				fmt.Println("CreateIdentity failed")
+				log.Fatal(err)
+			}
+			fmt.Printf("Saving ID to %s\n", idpath)
+			err = tid.SaveToFile(idpath, pass)
+			if err != nil {
+				fmt.Println("saving ID failed")
+				log.Fatal(err)
+			}
+		} else {
+			os.Exit(1)
 		}
 	} else {
 		fmt.Printf("Loading ID from %s\n", idpath)
@@ -70,7 +120,7 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.T
 			log.Fatal(err)
 		}
 	}
-
+	
 	// let the session begin
 	fmt.Println("Starting session")
 	sendMsgChan, receiveMsgChan, err := ctx.Run()
@@ -85,36 +135,41 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string) (o3.T
 func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, ctx o3.SessionContext, sendMsgChan chan<- o3.Message) {
 	// check if we know the remote ID for
 	// (just demonstration purposes \bc sending and receiving functions do this lookup for us)
-	if _, b := ctx.ID.Contacts.Get(rid); b == false {
-		//retrieve the ID from Threema's servers
-		myID := o3.NewIDString(rid)
-		fmt.Printf("Retrieving %s from directory server\n", myID.String())
-		myContact, err := tr.GetContactByID(myID)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// add them to our address book
-		ctx.ID.Contacts.Add(myContact)
-		
-		//and save the address book
-		fmt.Printf("Saving addressbook to %s\n", abpath)
-		err = ctx.ID.Contacts.SaveTo(abpath)
-		if err != nil {
-			fmt.Println("saving addressbook failed")
-			log.Fatal(err)
+	if rid != "" {
+		if _, b := ctx.ID.Contacts.Get(rid); b == false {
+			//retrieve the ID from Threema's servers
+			myID := o3.NewIDString(rid)
+			fmt.Printf("Retrieving %s from directory server\n", myID.String())
+			myContact, err := tr.GetContactByID(myID)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// add them to our address book
+			ctx.ID.Contacts.Add(myContact)
+			
+			//and save the address book
+			fmt.Printf("Saving addressbook to %s\n", abpath)
+			err = ctx.ID.Contacts.SaveTo(abpath)
+			if err != nil {
+				fmt.Println("saving addressbook failed")
+				log.Fatal(err)
+			}
 		}
 	}
 	
 	// send our initial message to our recipient
-	fmt.Println("Sending initial message to " + rid + ": " + testMsg)
-	err := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
-	if err != nil {
-		log.Fatal(err)
+	if rid != "" {
+		fmt.Println("Sending initial message to " + rid + ": " + testMsg)
+		err := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
 
 func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
+	
 	// handle incoming messages
 	for receivedMessage := range receiveMsgChan {
 		if receivedMessage.Err != nil {
@@ -170,6 +225,57 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 			fmt.Printf("Typing Notification from %s: [%x]\n", msg.Sender(), msg.OnOff)
 		default:
 			fmt.Printf("Unknown message type from: %s\nContent: %#v", msg.Sender(), msg)
+		}
+	}
+}
+
+
+func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgChan chan<- o3.Message) {
+	reader := bufio.NewReader(os.Stdin)
+	
+	fmt.Println("  Sending thread startet! Send messages via: ---ID---MESSAGE (e.g. 1337ABCDHello World!)")
+	for {
+		rid_msg, _ := reader.ReadString('\n')
+		idValid := false
+		if len(rid_msg) >= 8 {
+			rid := rid_msg[0:8]
+			msg := rid_msg[8:len(rid_msg)-1]
+			
+			ridRegex := regexp.MustCompile("\\A[0-9A-Z]{8}\\z")
+			rid = ridRegex.FindString(strings.ToUpper(rid))
+			if rid != "" && len(rid) == 8 {
+				idValid = true
+				
+				if _, b := ctx.ID.Contacts.Get(rid); b == false {
+					//retrieve the ID from Threema's servers
+					myID := o3.NewIDString(rid)
+					fmt.Printf("  Retrieving %s from directory server\n", myID.String())
+					myContact, err := tr.GetContactByID(myID)
+					if err != nil {
+						log.Fatal(err)
+					}
+					// add them to our address book
+					ctx.ID.Contacts.Add(myContact)
+					
+					//and save the address book
+					fmt.Printf("  Saving addressbook to %s\n", abpath)
+					err = ctx.ID.Contacts.SaveTo(abpath)
+					if err != nil {
+						fmt.Println("  saving addressbook failed")
+						log.Fatal(err)
+					}
+				}
+				
+				fmt.Println("  Sending message to " + rid + ".")
+				err := ctx.SendTextMessage(rid, msg, sendMsgChan)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
+		
+		if !idValid {
+			fmt.Println("  ID is invalid!")
 		}
 	}
 }
