@@ -13,13 +13,14 @@ import (
 	"unicode/utf8"
 	
 	"github.com/o3ma/o3"
+	"github.com/skip2/go-qrcode"
 )
 
 
 func main() {
-	pass, idpath, abpath, gdpath, pubNick, pubNickSet, rid, testMsg, createID := parseArgs()
+	pass, idpath, abpath, gdpath, qrpath, pubNick, pubNickSet, rid, testMsg, createID := parseArgs()
 	
-	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, pubNick, pubNickSet, createID)
+	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, qrpath, pubNick, pubNickSet, createID)
 	
 	go receiveLoop(tr, tid, abpath, gdpath, ctx, receiveMsgChan, sendMsgChan)
 	
@@ -29,7 +30,7 @@ func main() {
 }
 
 
-func parseArgs() ([]byte, string, string, string, string, bool, string, string, bool) {
+func parseArgs() ([]byte, string, string, string, string, string, bool, string, string, bool) {
 	cmdlnPubNick  := flag.String("pubnick",          "parrot", "The public nickname for the account (max. 32 chars).")
 	cmdlnConfdir  := flag.String("confdir",                "", "Path to the configuration directory.")
 	cmdlnPass     := flag.String("pass",           "01234567", "A string which should be at least 8 chars long (else may cause problems).")
@@ -46,6 +47,7 @@ func parseArgs() ([]byte, string, string, string, string, bool, string, string, 
 		idpath  = "threema.id"
 		abpath  = "address.book"
 		gdpath  = "group.directory"
+		qrpath  = "threema.id.png"
 	)
 	
 	cmdlnPubNickVal := *cmdlnPubNick
@@ -77,15 +79,16 @@ func parseArgs() ([]byte, string, string, string, string, bool, string, string, 
 		idpath = (*cmdlnConfdir) + "/" + idpath
 		abpath = (*cmdlnConfdir) + "/" + abpath
 		gdpath = (*cmdlnConfdir) + "/" + gdpath
+		qrpath = (*cmdlnConfdir) + "/" + qrpath
 	}
 	
 	createId := *cmdlnCreateID
 	
-	return pass, idpath, abpath, gdpath, pubNick, pubNickSet, rid, testMsg, createId
+	return pass, idpath, abpath, gdpath, qrpath, pubNick, pubNickSet, rid, testMsg, createId
 }
 
 
-func initialise(pass []byte, idpath string, abpath string, gdpath string, pubNick string, pubNickSet bool, createID bool) (*o3.ThreemaRest, *o3.ThreemaID, *o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
+func initialise(pass []byte, idpath string, abpath string, gdpath string, qrpath string, pubNick string, pubNickSet bool, createID bool) (*o3.ThreemaRest, *o3.ThreemaID, *o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
 	var (
 		tr      o3.ThreemaRest
 		tid     o3.ThreemaID
@@ -123,6 +126,8 @@ func initialise(pass []byte, idpath string, abpath string, gdpath string, pubNic
 			log.Fatal(err)
 		}
 	}
+	
+	saveQrCode(&tid, qrpath)
 	
 	if pubNickSet {
 		tid.Nick = o3.NewPubNick(pubNick)
@@ -345,3 +350,19 @@ func contactToS(contact o3.ThreemaContact, withPubNick bool) string {
 	
 	return result
 }
+
+
+func saveQrCode(tid *o3.ThreemaID, qrpath string) {
+	if _, err := os.Stat(qrpath); err != nil {
+		// No qr code file found. Generating one.
+		// concat QR-Code content. "3mid" maybe is a shortcut for Threema-ID
+		qrtext := fmt.Sprintf("3mid:%s,%x", tid.String(), tid.GetPubKey()[:])
+
+		// generate the PNG-Image
+		err := qrcode.WriteFile(qrtext, qrcode.Medium, 256, qrpath)
+		if err != nil { 
+			log.Fatal(err)
+		}
+	}
+}
+
