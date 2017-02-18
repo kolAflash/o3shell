@@ -133,7 +133,7 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, pubni
 	//check if we can load an addressbook
 	if _, err := os.Stat(abpath); !os.IsNotExist(err) {
 		fmt.Printf("  Loading addressbook from: %s\n", abpath)
-		err = ctx.ID.Contacts.ImportFrom(abpath)
+		err = ctx.ID.Contacts.LoadFromFile(abpath)
 		if err != nil {
 			fmt.Println("  Loading addressbook failed!")
 			log.Fatal(err)
@@ -178,8 +178,8 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 	
 	// send our initial message to our recipient
 	if rid != "" {
-		fmt.Println("  Sending initial message to " + rid + ": " + testMsg)
-		err := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
+		err, tm := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
+		fmt.Println("  Sending initial message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ": " + testMsg + "\n--------------------\n\n")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -258,8 +258,8 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 					}
 				}
 				
-				fmt.Println("  Sending message to " + rid + ".")
-				err := ctx.SendTextMessage(rid, msg, sendMsgChan)
+				err, tm := ctx.SendTextMessage(rid, msg, sendMsgChan)
+				fmt.Println("  Sending message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ".")
 				if err != nil {
 					log.Fatal(err)
 				}
