@@ -179,7 +179,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 	// send our initial message to our recipient
 	if rid != "" {
 		err, tm := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
-		fmt.Println("  Sending initial message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ": " + testMsg + "\n--------------------\n\n")
+		fmt.Println("  Sending initial message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ": " + testMsg + "\n--------------------\n")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -197,11 +197,13 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 		switch msg := receivedMessage.Msg.(type) {
 		case o3.ImageMessage:
 			// display the image if you like
+			fmt.Printf("  Image Message from %s. (displaying image messages not implemented yet)\n", msg.Sender())
 		case o3.AudioMessage:
 			// play the audio if you like
+			fmt.Printf("  Audio Message from %s. (playing audio messages not implemented yet)\n", msg.Sender())
 		case o3.TextMessage:
 			// Print text message.
-			fmt.Printf("Message from %s: %s\n--------------------\n\n", msg.Sender(), msg.Text())
+			fmt.Printf("\nMessage from %s: %s\n--------------------\n\n", msg.Sender(), msg.Text())
 			confirmMsg(ctx, msg, sendMsgChan)
 		case o3.GroupTextMessage:
 			fmt.Printf("  %s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
@@ -259,7 +261,7 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 				}
 				
 				err, tm := ctx.SendTextMessage(rid, msg, sendMsgChan)
-				fmt.Println("  Sending message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ".")
+				fmt.Println("  Sending message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ".\n")
 				if err != nil {
 					log.Fatal(err)
 				}
