@@ -4,21 +4,23 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 	
 	"github.com/o3ma/o3"
 )
 
 
 func main() {
-	pass, idpath, abpath, pubnick, rid, testMsg, createID := parseArgs()
+	pass, idpath, abpath, pubnick, pubnickSet, rid, testMsg, createID := parseArgs()
 	
-	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick, createID)
+	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick, pubnickSet, createID)
 	
 	go receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
 	
@@ -28,14 +30,17 @@ func main() {
 }
 
 
-func parseArgs() ([]byte, string, string, string, string, string, bool) {
+func parseArgs() ([]byte, string, string, string, bool, string, string, bool) {
 	cmdlnPubnick  := flag.String("nickname",         "parrot", "The nickname for the account (max. 32 chars).")
 	cmdlnConfdir  := flag.String("confdir",                "", "Path to the configuration directory.")
-	cmdlnPass     := flag.String("pass",           "01234567", "A string which must be at least 8 chars long.")
+	cmdlnPass     := flag.String("pass",           "01234567", "A string which should be at least 8 chars long (else may cause problems).")
+	cmdlnHexPass  := flag.String("hexpass",                "", "Like --pass but in hexidecimal. Overrides --pass option. E.g.: 4d7954696e795057")
 	cmdlnTestID   := flag.String("testid",                 "", "Send \"testmsg\" to this ID (8 character hex string).")
 	cmdlnTestMsg  := flag.String("testmsg",  "Say something!", "Send this message to \"testid\".")
 	cmdlnCreateID := flag.Bool(  "createid",            false, "Create a new ID if nessesary without asking for confirmation.")
 	flag.Parse()
+	flagset := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { flagset[f.Name]=true } )
 	
 	var (
 		pass    = []byte{0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37} // 01234567
@@ -46,6 +51,7 @@ func parseArgs() ([]byte, string, string, string, string, string, bool) {
 	cmdlnPubnickVal := *cmdlnPubnick
 	if len(cmdlnPubnickVal) > 32 { cmdlnPubnickVal = cmdlnPubnickVal[0:32] }
 	pubnick := cmdlnPubnickVal
+	var pubnickSet bool = !!flagset["nickname"]
 	
 	rid := ""
 	ridRegex := regexp.MustCompile("\\A[0-9A-Z]{8}\\z")
@@ -54,7 +60,18 @@ func parseArgs() ([]byte, string, string, string, string, string, bool) {
 	
 	testMsg := *cmdlnTestMsg
 	
-	if len(*cmdlnPass) >= 8 { pass = []byte(*cmdlnPass) }
+	if flagset["hexpass"] {
+		hexpass, err := hex.DecodeString(*cmdlnHexPass)
+		if err == nil {
+			pass = hexpass
+		} else {
+			fmt.Printf("  Error decoding hexpass!\n")
+			os.Exit(1)
+		}
+	} else {
+		pass = []byte(*cmdlnPass)
+	}
+	if utf8.RuneCountInString(string(pass)) < 8 { fmt.Print("  Warning: Password should have at least 8 characters to avoid problems with original Threema client!\n") }
 	
 	if (*cmdlnConfdir) != "" {
 		idpath = (*cmdlnConfdir) + "/" + idpath
@@ -63,11 +80,11 @@ func parseArgs() ([]byte, string, string, string, string, string, bool) {
 	
 	createId := *cmdlnCreateID
 	
-	return pass, idpath, abpath, pubnick, rid, testMsg, createId
+	return pass, idpath, abpath, pubnick, pubnickSet, rid, testMsg, createId
 }
 
 
-func initialise(pass []byte, idpath string, abpath string, pubnick string, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
+func initialise(pass []byte, idpath string, abpath string, pubnick string, pubnickSet bool, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
 	var (
 		tr      o3.ThreemaRest
 		tid     o3.ThreemaID
@@ -107,7 +124,10 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, creat
 	}
 	fmt.Printf("  Using ID: %s\n", tid.String())
 	
-	tid.Nick = o3.NewPubNick(pubnick)
+	if pubnickSet {
+		tid.Nick = o3.NewPubNick(pubnick)
+		fmt.Printf("  Setting nickname to: %s\n", pubnick)
+	}
 	
 	ctx := o3.NewSessionContext(tid)
 	
