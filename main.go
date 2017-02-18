@@ -4,9 +4,9 @@ package main
 
 import (
 	"bufio"
-	"log"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -29,12 +29,12 @@ func main() {
 
 
 func parseArgs() ([]byte, string, string, string, string, string, bool) {
-	cmdlnPubnick  := flag.String("nickname",        "parrot", "The nickname for the account (max. 32 chars).")
-	cmdlnConfdir  := flag.String("confdir",               "", "Path to the configuration directory.")
-	cmdlnPass     := flag.String("pass",          "01234567", "A string which must be at least 8 chars long.")
-	cmdlnTestID   := flag.String("testid",                "", "Send \"testmsg\" to this ID (8 character hex string).")
-	cmdlnTestMsg  := flag.String("testmsg", "Say something!", "Send this message to \"testid\".")
-	cmdlnCreateID := flag.Bool(  "createid",           false, "Create a new ID if nessesary without asking for confirmation.")
+	cmdlnPubnick  := flag.String("nickname",         "parrot", "The nickname for the account (max. 32 chars).")
+	cmdlnConfdir  := flag.String("confdir",                "", "Path to the configuration directory.")
+	cmdlnPass     := flag.String("pass",           "01234567", "A string which must be at least 8 chars long.")
+	cmdlnTestID   := flag.String("testid",                 "", "Send \"testmsg\" to this ID (8 character hex string).")
+	cmdlnTestMsg  := flag.String("testmsg",  "Say something!", "Send this message to \"testid\".")
+	cmdlnCreateID := flag.Bool(  "createid",            false, "Create a new ID if nessesary without asking for confirmation.")
 	flag.Parse()
 	
 	var (
@@ -77,7 +77,7 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, creat
 	if _, err := os.Stat(idpath); err != nil {
 		if !createID {
 			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("No existing ID found. Create a new one? Enter YES (upper case) or NO: ")
+			fmt.Print("  No existing ID found. Create a new one? Enter YES (upper case) or NO: ")
 			text, _ := reader.ReadString('\n')
 			createID = (text == "YES\n")
 		}
@@ -86,26 +86,26 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, creat
 			var err error
 			tid, err = tr.CreateIdentity()
 			if err != nil {
-				fmt.Println("CreateIdentity failed")
+				fmt.Println("  CreateIdentity failed!")
 				log.Fatal(err)
 			}
-			fmt.Printf("Saving ID to %s\n", idpath)
+			fmt.Printf("  Saving ID to %s\n", idpath)
 			err = tid.SaveToFile(idpath, pass)
 			if err != nil {
-				fmt.Println("saving ID failed")
+				fmt.Println("  Saving ID failed!")
 				log.Fatal(err)
 			}
 		} else {
 			os.Exit(1)
 		}
 	} else {
-		fmt.Printf("Loading ID from %s\n", idpath)
+		fmt.Printf("  Loading ID from %s\n", idpath)
 		tid, err = o3.LoadIDFromFile(idpath, pass)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-	fmt.Printf("Using ID: %s\n", tid.String())
+	fmt.Printf("  Using ID: %s\n", tid.String())
 	
 	tid.Nick = o3.NewPubNick(pubnick)
 	
@@ -113,16 +113,16 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, creat
 	
 	//check if we can load an addressbook
 	if _, err := os.Stat(abpath); !os.IsNotExist(err) {
-		fmt.Printf("Loading addressbook from %s\n", abpath)
+		fmt.Printf("  Loading addressbook from: %s\n", abpath)
 		err = ctx.ID.Contacts.ImportFrom(abpath)
 		if err != nil {
-			fmt.Println("loading addressbook failed")
+			fmt.Println("  Loading addressbook failed!")
 			log.Fatal(err)
 		}
 	}
 	
 	// let the session begin
-	fmt.Println("Starting session")
+	fmt.Println("  Starting session")
 	sendMsgChan, receiveMsgChan, err := ctx.Run()
 	if err != nil {
 		log.Fatal(err)
@@ -139,7 +139,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 		if _, b := ctx.ID.Contacts.Get(rid); b == false {
 			//retrieve the ID from Threema's servers
 			myID := o3.NewIDString(rid)
-			fmt.Printf("Retrieving %s from directory server\n", myID.String())
+			fmt.Printf("  Retrieving %s from directory server\n", myID.String())
 			myContact, err := tr.GetContactByID(myID)
 			if err != nil {
 				log.Fatal(err)
@@ -148,10 +148,10 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 			ctx.ID.Contacts.Add(myContact)
 			
 			//and save the address book
-			fmt.Printf("Saving addressbook to %s\n", abpath)
+			fmt.Printf("  Saving addressbook to: %s\n", abpath)
 			err = ctx.ID.Contacts.SaveTo(abpath)
 			if err != nil {
-				fmt.Println("saving addressbook failed")
+				fmt.Println("  Saving addressbook failed!")
 				log.Fatal(err)
 			}
 		}
@@ -159,7 +159,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 	
 	// send our initial message to our recipient
 	if rid != "" {
-		fmt.Println("Sending initial message to " + rid + ": " + testMsg)
+		fmt.Println("  Sending initial message to " + rid + ": " + testMsg)
 		err := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
 		if err != nil {
 			log.Fatal(err)
@@ -169,11 +169,10 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 
 
 func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
-	
 	// handle incoming messages
 	for receivedMessage := range receiveMsgChan {
 		if receivedMessage.Err != nil {
-			fmt.Printf("Error Receiving Message: %s\n", receivedMessage.Err)
+			fmt.Printf("  Error Receiving Message: %s\n", receivedMessage.Err)
 			continue
 		}
 		switch msg := receivedMessage.Msg.(type) {
@@ -183,7 +182,7 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 			// play the audio if you like
 		case o3.TextMessage:
 			// respond with a quote of what was send to us.
-			fmt.Printf("---- Received Message from: %s ----\n%s\n-----------------------------------------\n", msg.Sender(), msg.Text())
+			fmt.Printf("Message from %s: %s\n--------------------\n\n", msg.Sender(), msg.Text())
 			
 			// but only if it's no a message we sent to ourselves, avoid recursive neverending qoutes
 			if (tid.String() == msg.Sender().String()) {
@@ -198,13 +197,7 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 			if err != nil {
 				log.Fatal(err)
 			}
-			// confirm to the sender that we received the message
-			// this is how one can send messages manually without helper functions like "SendTextMessage"
-			drm, err := o3.NewDeliveryReceiptMessage(&ctx, msg.Sender().String(), msg.ID(), o3.MSGDELIVERED)
-			if err != nil {
-				log.Fatal(err)
-			}
-			sendMsgChan <- drm
+			confirmMsg(ctx, msg, sendMsgChan)
 			// give a thumbs up
 			upm, err := o3.NewDeliveryReceiptMessage(&ctx, msg.Sender().String(), msg.ID(), o3.MSGAPPROVED)
 			if err != nil {
@@ -212,19 +205,19 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 			}
 			sendMsgChan <- upm
 		case o3.GroupTextMessage:
-			fmt.Printf("%s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
+			fmt.Printf("  %s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
 		case o3.GroupManageSetNameMessage:
-			fmt.Printf("Group [%x] is now called %s\n", msg.GroupID(), msg.Name())
+			fmt.Printf("  Group [%x] is now called %s\n", msg.GroupID(), msg.Name())
 		case o3.GroupManageSetMembersMessage:
-			fmt.Printf("Group [%x] now includes %v\n", msg.GroupID(), msg.Members())
+			fmt.Printf("  Group [%x] now includes %v\n", msg.GroupID(), msg.Members())
 		case o3.GroupMemberLeftMessage:
-			fmt.Printf("Member [%s] left the Group [%x]\n", msg.Sender(), msg.GroupID())
+			fmt.Printf("  Member [%s] left the Group [%x]\n", msg.Sender(), msg.GroupID())
 		case o3.DeliveryReceiptMessage:
-			fmt.Printf("Message [%x] has been acknowledged by the server.\n", msg.MsgID())
+			fmt.Printf("  Message [%x] has been acknowledged by the server.\n", msg.MsgID())
 		case o3.TypingNotificationMessage:
-			fmt.Printf("Typing Notification from %s: [%x]\n", msg.Sender(), msg.OnOff)
+			fmt.Printf("  Typing Notification from %s: [%x]\n", msg.Sender(), msg.OnOff)
 		default:
-			fmt.Printf("Unknown message type from: %s\nContent: %#v", msg.Sender(), msg)
+			fmt.Printf("  Unknown message type from: %s\nContent: %#v", msg.Sender(), msg)
 		}
 	}
 }
@@ -258,10 +251,10 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 					ctx.ID.Contacts.Add(myContact)
 					
 					//and save the address book
-					fmt.Printf("  Saving addressbook to %s\n", abpath)
+					fmt.Printf("  Saving addressbook to: %s\n", abpath)
 					err = ctx.ID.Contacts.SaveTo(abpath)
 					if err != nil {
-						fmt.Println("  saving addressbook failed")
+						fmt.Println("  Saving addressbook failed!")
 						log.Fatal(err)
 					}
 				}
@@ -278,4 +271,15 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 			fmt.Println("  ID is invalid!")
 		}
 	}
+}
+
+
+func confirmMsg(ctx o3.SessionContext, msg o3.TextMessage, sendMsgChan chan<- o3.Message) {
+	// confirm to the sender that we received the message
+	// this is how one can send messages manually without helper functions like "SendTextMessage"
+	drm, err := o3.NewDeliveryReceiptMessage(&ctx, msg.Sender().String(), msg.ID(), o3.MSGDELIVERED)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sendMsgChan <- drm
 }
