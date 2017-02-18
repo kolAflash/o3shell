@@ -17,11 +17,11 @@ import (
 
 
 func main() {
-	pass, idpath, abpath, gdpath, pubnick, pubnickSet, rid, testMsg, createID := parseArgs()
+	pass, idpath, abpath, gdpath, pubNick, pubNickSet, rid, testMsg, createID := parseArgs()
 	
-	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, pubnick, pubnickSet, createID)
+	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, pubNick, pubNickSet, createID)
 	
-	go receiveLoop(tid, gdpath, ctx, receiveMsgChan, sendMsgChan)
+	go receiveLoop(tr, tid, abpath, gdpath, ctx, receiveMsgChan, sendMsgChan)
 	
 	sendTestMsg(tr, abpath, rid, testMsg, ctx, sendMsgChan)
 	
@@ -30,7 +30,7 @@ func main() {
 
 
 func parseArgs() ([]byte, string, string, string, string, bool, string, string, bool) {
-	cmdlnPubnick  := flag.String("nickname",         "parrot", "The nickname for the account (max. 32 chars).")
+	cmdlnPubNick  := flag.String("pubnick",          "parrot", "The public nickname for the account (max. 32 chars).")
 	cmdlnConfdir  := flag.String("confdir",                "", "Path to the configuration directory.")
 	cmdlnPass     := flag.String("pass",           "01234567", "A string which should be at least 8 chars long (else may cause problems).")
 	cmdlnHexPass  := flag.String("hexpass",                "", "Like --pass but in hexidecimal. Overrides --pass option. E.g.: 4d7954696e795057")
@@ -48,10 +48,10 @@ func parseArgs() ([]byte, string, string, string, string, bool, string, string, 
 		gdpath  = "group.directory"
 	)
 	
-	cmdlnPubnickVal := *cmdlnPubnick
-	if len(cmdlnPubnickVal) > 32 { cmdlnPubnickVal = cmdlnPubnickVal[0:32] }
-	pubnick := cmdlnPubnickVal
-	var pubnickSet bool = !!flagset["nickname"]
+	cmdlnPubNickVal := *cmdlnPubNick
+	if len(cmdlnPubNickVal) > 32 { cmdlnPubNickVal = cmdlnPubNickVal[0:32] }
+	pubNick := cmdlnPubNickVal
+	var pubNickSet bool = !!flagset["pubnick"]
 	
 	rid := ""
 	ridRegex := regexp.MustCompile("\\A[0-9A-Z]{8}\\z")
@@ -81,11 +81,11 @@ func parseArgs() ([]byte, string, string, string, string, bool, string, string, 
 	
 	createId := *cmdlnCreateID
 	
-	return pass, idpath, abpath, gdpath, pubnick, pubnickSet, rid, testMsg, createId
+	return pass, idpath, abpath, gdpath, pubNick, pubNickSet, rid, testMsg, createId
 }
 
 
-func initialise(pass []byte, idpath string, abpath string, gdpath string, pubnick string, pubnickSet bool, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
+func initialise(pass []byte, idpath string, abpath string, gdpath string, pubNick string, pubNickSet bool, createID bool) (*o3.ThreemaRest, *o3.ThreemaID, *o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
 	var (
 		tr      o3.ThreemaRest
 		tid     o3.ThreemaID
@@ -123,12 +123,13 @@ func initialise(pass []byte, idpath string, abpath string, gdpath string, pubnic
 			log.Fatal(err)
 		}
 	}
-	fmt.Printf("  Using ID: %s\n", tid.String())
 	
-	if pubnickSet {
-		tid.Nick = o3.NewPubNick(pubnick)
-		fmt.Printf("  Setting nickname to: %s\n", pubnick)
+	if pubNickSet {
+		tid.Nick = o3.NewPubNick(pubNick)
+		fmt.Printf("  Setting public nickname to: %s\n", pubNick)
 	}
+	
+	fmt.Printf("  Using ID %s and public nickname: %s\n", tid.String(), tid.Nick)
 	
 	ctx := o3.NewSessionContext(tid)
 	
@@ -159,23 +160,19 @@ func initialise(pass []byte, idpath string, abpath string, gdpath string, pubnic
 		log.Fatal(err)
 	}
 	
-	return tr, tid, ctx, receiveMsgChan, sendMsgChan
+	return &tr, &tid, &ctx, receiveMsgChan, sendMsgChan
 }
 
 
-func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, ctx o3.SessionContext, sendMsgChan chan<- o3.Message) {
+func sendTestMsg(tr *o3.ThreemaRest, abpath string, rid string, testMsg string, ctx *o3.SessionContext, sendMsgChan chan<- o3.Message) {
 	// check if we know the remote ID for
 	// (just demonstration purposes \bc sending and receiving functions do this lookup for us)
 	if rid != "" {
-		if _, b := ctx.ID.Contacts.Get(rid); b == false {
-			addContact(tr, abpath, ctx, rid)
-		}
-	}
-	
-	// send our initial message to our recipient
-	if rid != "" {
+		contact := addContactIfUnknown(tr, abpath, ctx, rid, "")
+		
+		// send our initial message to our recipient
 		err, tm := ctx.SendTextMessage(rid, testMsg, sendMsgChan)
-		fmt.Println("  Sending initial message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ": " + testMsg + "\n--------------------\n")
+		fmt.Println("  Sending initial message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + contactToS(contact, false) + ": " + testMsg + "\n--------------------\n")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -183,7 +180,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 }
 
 
-func receiveLoop(tid o3.ThreemaID, gdpath string, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
+func receiveLoop(tr *o3.ThreemaRest, tid *o3.ThreemaID, abpath string, gdpath string, ctx *o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
 	// handle incoming messages
 	for receivedMessage := range receiveMsgChan {
 		if receivedMessage.Err != nil {
@@ -199,8 +196,9 @@ func receiveLoop(tid o3.ThreemaID, gdpath string, ctx o3.SessionContext, receive
 			fmt.Printf("  Audio Message from %s. (playing audio messages not implemented yet)\n", msg.Sender())
 		case o3.TextMessage:
 			// Print text message.
-			fmt.Printf("\nMessage from %s: %s\n--------------------\n\n", msg.Sender(), msg.Text())
-			confirmMsg(ctx, msg, sendMsgChan)
+			fmt.Printf("\nMessage from %s: %s: %s\n--------------------\n\n", msg.Sender(), msg.PubNick(), msg.Text())
+			confirmMsg(ctx, &msg, sendMsgChan)
+			updateContact(tr, abpath, ctx, &msg)
 		case o3.GroupTextMessage:
 			fmt.Printf("  %s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
 			group, ok := ctx.ID.Groups.Get(msg.GroupCreator(), msg.GroupID())
@@ -228,7 +226,7 @@ func receiveLoop(tid o3.ThreemaID, gdpath string, ctx o3.SessionContext, receive
 }
 
 
-func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgChan chan<- o3.Message) {
+func sendLoop(tr *o3.ThreemaRest, abpath string, ctx *o3.SessionContext, sendMsgChan chan<- o3.Message) {
 	reader := bufio.NewReader(os.Stdin)
 	
 	fmt.Println("  Sending thread startet! Send messages via: ---ID---MESSAGE (e.g. 1337ABCDHello World!)")
@@ -244,12 +242,11 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 			if rid != "" && len(rid) == 8 {
 				idValid = true
 				
-				if _, b := ctx.ID.Contacts.Get(rid); b == false {
-					addContact(tr, abpath, ctx, rid)
-				}
+				
+				contact := addContactIfUnknown(tr, abpath, ctx, rid, "")
 				
 				err, tm := ctx.SendTextMessage(rid, msg, sendMsgChan)
-				fmt.Println("  Sending message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + rid + ".\n")
+				fmt.Println("  Sending message [" + fmt.Sprintf("%x", tm.ID()) + "] to " + contactToS(contact, false) + ".\n")
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -263,10 +260,10 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 }
 
 
-func confirmMsg(ctx o3.SessionContext, msg o3.TextMessage, sendMsgChan chan<- o3.Message) {
+func confirmMsg(ctx *o3.SessionContext, msg *o3.TextMessage, sendMsgChan chan<- o3.Message) {
 	// confirm to the sender that we received the message
 	// this is how one can send messages manually without helper functions like "SendTextMessage"
-	drm, err := o3.NewDeliveryReceiptMessage(&ctx, msg.Sender().String(), msg.ID(), o3.MSGDELIVERED)
+	drm, err := o3.NewDeliveryReceiptMessage(ctx, msg.Sender().String(), msg.ID(), o3.MSGDELIVERED)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -274,22 +271,77 @@ func confirmMsg(ctx o3.SessionContext, msg o3.TextMessage, sendMsgChan chan<- o3
 }
 
 
-func addContact(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, rid string) {
+func addContactIfUnknown(tr *o3.ThreemaRest, abpath string, ctx *o3.SessionContext, rid string, pubNick string) o3.ThreemaContact {
+	contact, contactFound := ctx.ID.Contacts.Get(rid); 
+	if contactFound == false {
+		contact = addContact(tr, abpath, ctx, rid, "")
+		fmt.Printf("  Contact missing in addressbook, so add it. ID: %s, Nickname: %s\n", rid, pubNick)
+	}
+	return contact
+}
+
+
+func addContact(tr *o3.ThreemaRest, abpath string, ctx *o3.SessionContext, rid string, pubNick string) o3.ThreemaContact {
 	//retrieve the ID from Threema's servers
 	myID := o3.NewIDString(rid)
 	fmt.Printf("  Retrieving %s from directory server\n", myID.String())
-	myContact, err := tr.GetContactByID(myID)
+	contact, err := tr.GetContactByID(myID)
+	contact.PubNick = pubNick
 	if err != nil {
 		log.Fatal(err)
 	}
 	// add them to our address book
-	ctx.ID.Contacts.Add(myContact)
+	ctx.ID.Contacts.Add(contact)
+	saveAddressbook(abpath, ctx)
+	return contact
+}
+
+
+func updateContact(tr *o3.ThreemaRest, abpath string, ctx *o3.SessionContext, msg *o3.TextMessage) {
+	rid := msg.Sender().String()
+	contact, contactFound := ctx.ID.Contacts.Get(rid)
+	newPubNick := fmt.Sprintf("%s", msg.PubNick().String())
 	
+	if !contactFound {
+		contact = addContact(tr, abpath, ctx, rid, newPubNick)
+		fmt.Printf("  Contact missing in addressbook, so add it. ID: %s, Nickname: %s\n", rid, newPubNick)
+	} else if (contact.PubNick != newPubNick) {
+		fmt.Println("  Contact " + contactToS(contact, true) + " has new public nickname: " + newPubNick)
+		contact.PubNick = newPubNick
+		ctx.ID.Contacts.Add(contact)
+		saveAddressbook(abpath, ctx)
+	}
+}
+
+
+func saveAddressbook(abpath string, ctx *o3.SessionContext) {
 	//and save the address book
-	fmt.Printf("  Saving addressbook to: %s\n", abpath)
-	err = ctx.ID.Contacts.SaveTo(abpath)
+	//fmt.Printf("  Saving addressbook to: %s\n", abpath)
+	err := ctx.ID.Contacts.SaveTo(abpath)
 	if err != nil {
 		fmt.Println("  Saving addressbook failed!")
 		log.Fatal(err)
 	}
+}
+
+
+func contactToS(contact o3.ThreemaContact, withPubNick bool) string {
+	result := "\"" + contact.PubNick + "\""
+	
+	if contact.FirstName != "" || contact.LastName != "" {
+		space := ""
+		if contact.FirstName != "" && contact.LastName != "" { space = " " }
+		firstlast := contact.FirstName + space + contact.LastName
+		if withPubNick && result != "" {
+			result = firstlast + " " + result
+		} else {
+			result = firstlast
+		}
+	}
+	
+	space := ""
+	if result != "" { space = " " }
+	result =  "[" + contact.ID.String() + "]" + space + result
+	
+	return result
 }
