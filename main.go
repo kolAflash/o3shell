@@ -1,5 +1,4 @@
-// This is a small bot that messages someone and replies to everything with a qouted echo
-// Additionally you can send messages from commandline.
+// Receive and send messages via commandline.
 package main
 
 import (
@@ -201,29 +200,9 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 		case o3.AudioMessage:
 			// play the audio if you like
 		case o3.TextMessage:
-			// respond with a quote of what was send to us.
+			// Print text message.
 			fmt.Printf("Message from %s: %s\n--------------------\n\n", msg.Sender(), msg.Text())
-			
-			// but only if it's no a message we sent to ourselves, avoid recursive neverending qoutes
-			if (tid.String() == msg.Sender().String()) {
-				continue
-			}
-			
-			// to make the quote render nicely in the app we use "markdown"
-			// of the form "> PERSONWEQUOTE: Text of qoute\nSomething we wanna add."
-			qoute := fmt.Sprintf("> %s: %s\n%s", msg.Sender(), msg.Text(), "Exactly!")
-			// we use the convinient "SendTextMessage" function to send
-			err := ctx.SendTextMessage(msg.Sender().String(), qoute, sendMsgChan)
-			if err != nil {
-				log.Fatal(err)
-			}
 			confirmMsg(ctx, msg, sendMsgChan)
-			// give a thumbs up
-			upm, err := o3.NewDeliveryReceiptMessage(&ctx, msg.Sender().String(), msg.ID(), o3.MSGAPPROVED)
-			if err != nil {
-				log.Fatal(err)
-			}
-			sendMsgChan <- upm
 		case o3.GroupTextMessage:
 			fmt.Printf("  %s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
 		case o3.GroupManageSetNameMessage:
