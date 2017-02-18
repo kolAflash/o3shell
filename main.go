@@ -21,7 +21,7 @@ func main() {
 	
 	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, pubnick, pubnickSet, createID)
 	
-	go receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
+	go receiveLoop(tid, gdpath, ctx, receiveMsgChan, sendMsgChan)
 	
 	sendTestMsg(tr, abpath, rid, testMsg, ctx, sendMsgChan)
 	
@@ -199,7 +199,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 }
 
 
-func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
+func receiveLoop(tid o3.ThreemaID, gdpath string, ctx o3.SessionContext, receiveMsgChan <-chan o3.ReceivedMsg, sendMsgChan chan<- o3.Message) {
 	// handle incoming messages
 	for receivedMessage := range receiveMsgChan {
 		if receivedMessage.Err != nil {
