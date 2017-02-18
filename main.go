@@ -168,23 +168,7 @@ func sendTestMsg(tr o3.ThreemaRest, abpath string, rid string, testMsg string, c
 	// (just demonstration purposes \bc sending and receiving functions do this lookup for us)
 	if rid != "" {
 		if _, b := ctx.ID.Contacts.Get(rid); b == false {
-			//retrieve the ID from Threema's servers
-			myID := o3.NewIDString(rid)
-			fmt.Printf("  Retrieving %s from directory server\n", myID.String())
-			myContact, err := tr.GetContactByID(myID)
-			if err != nil {
-				log.Fatal(err)
-			}
-			// add them to our address book
-			ctx.ID.Contacts.Add(myContact)
-			
-			//and save the address book
-			fmt.Printf("  Saving addressbook to: %s\n", abpath)
-			err = ctx.ID.Contacts.SaveTo(abpath)
-			if err != nil {
-				fmt.Println("  Saving addressbook failed!")
-				log.Fatal(err)
-			}
+			addContact(tr, abpath, ctx, rid)
 		}
 	}
 	
@@ -261,23 +245,7 @@ func sendLoop(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, sendMsgCh
 				idValid = true
 				
 				if _, b := ctx.ID.Contacts.Get(rid); b == false {
-					//retrieve the ID from Threema's servers
-					myID := o3.NewIDString(rid)
-					fmt.Printf("  Retrieving %s from directory server\n", myID.String())
-					myContact, err := tr.GetContactByID(myID)
-					if err != nil {
-						log.Fatal(err)
-					}
-					// add them to our address book
-					ctx.ID.Contacts.Add(myContact)
-					
-					//and save the address book
-					fmt.Printf("  Saving addressbook to: %s\n", abpath)
-					err = ctx.ID.Contacts.SaveTo(abpath)
-					if err != nil {
-						fmt.Println("  Saving addressbook failed!")
-						log.Fatal(err)
-					}
+					addContact(tr, abpath, ctx, rid)
 				}
 				
 				err, tm := ctx.SendTextMessage(rid, msg, sendMsgChan)
@@ -303,4 +271,25 @@ func confirmMsg(ctx o3.SessionContext, msg o3.TextMessage, sendMsgChan chan<- o3
 		log.Fatal(err)
 	}
 	sendMsgChan <- drm
+}
+
+
+func addContact(tr o3.ThreemaRest, abpath string, ctx o3.SessionContext, rid string) {
+	//retrieve the ID from Threema's servers
+	myID := o3.NewIDString(rid)
+	fmt.Printf("  Retrieving %s from directory server\n", myID.String())
+	myContact, err := tr.GetContactByID(myID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// add them to our address book
+	ctx.ID.Contacts.Add(myContact)
+	
+	//and save the address book
+	fmt.Printf("  Saving addressbook to: %s\n", abpath)
+	err = ctx.ID.Contacts.SaveTo(abpath)
+	if err != nil {
+		fmt.Println("  Saving addressbook failed!")
+		log.Fatal(err)
+	}
 }
