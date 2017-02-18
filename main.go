@@ -17,9 +17,9 @@ import (
 
 
 func main() {
-	pass, idpath, abpath, pubnick, pubnickSet, rid, testMsg, createID := parseArgs()
+	pass, idpath, abpath, gdpath, pubnick, pubnickSet, rid, testMsg, createID := parseArgs()
 	
-	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, pubnick, pubnickSet, createID)
+	tr, tid, ctx, receiveMsgChan, sendMsgChan := initialise(pass, idpath, abpath, gdpath, pubnick, pubnickSet, createID)
 	
 	go receiveLoop(tid, ctx, receiveMsgChan, sendMsgChan)
 	
@@ -29,7 +29,7 @@ func main() {
 }
 
 
-func parseArgs() ([]byte, string, string, string, bool, string, string, bool) {
+func parseArgs() ([]byte, string, string, string, string, bool, string, string, bool) {
 	cmdlnPubnick  := flag.String("nickname",         "parrot", "The nickname for the account (max. 32 chars).")
 	cmdlnConfdir  := flag.String("confdir",                "", "Path to the configuration directory.")
 	cmdlnPass     := flag.String("pass",           "01234567", "A string which should be at least 8 chars long (else may cause problems).")
@@ -45,6 +45,7 @@ func parseArgs() ([]byte, string, string, string, bool, string, string, bool) {
 		pass    = []byte{0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37} // 01234567
 		idpath  = "threema.id"
 		abpath  = "address.book"
+		gdpath  = "group.directory"
 	)
 	
 	cmdlnPubnickVal := *cmdlnPubnick
@@ -75,15 +76,16 @@ func parseArgs() ([]byte, string, string, string, bool, string, string, bool) {
 	if (*cmdlnConfdir) != "" {
 		idpath = (*cmdlnConfdir) + "/" + idpath
 		abpath = (*cmdlnConfdir) + "/" + abpath
+		gdpath = (*cmdlnConfdir) + "/" + gdpath
 	}
 	
 	createId := *cmdlnCreateID
 	
-	return pass, idpath, abpath, pubnick, pubnickSet, rid, testMsg, createId
+	return pass, idpath, abpath, gdpath, pubnick, pubnickSet, rid, testMsg, createId
 }
 
 
-func initialise(pass []byte, idpath string, abpath string, pubnick string, pubnickSet bool, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
+func initialise(pass []byte, idpath string, abpath string, gdpath string, pubnick string, pubnickSet bool, createID bool) (o3.ThreemaRest, o3.ThreemaID, o3.SessionContext, <-chan o3.ReceivedMsg, chan<- o3.Message) {
 	var (
 		tr      o3.ThreemaRest
 		tid     o3.ThreemaID
@@ -136,6 +138,16 @@ func initialise(pass []byte, idpath string, abpath string, pubnick string, pubni
 		err = ctx.ID.Contacts.LoadFromFile(abpath)
 		if err != nil {
 			fmt.Println("  Loading addressbook failed!")
+			log.Fatal(err)
+		}
+	}
+
+	//check if we can load a group directory
+	if _, err := os.Stat(gdpath); !os.IsNotExist(err) {
+		fmt.Printf("  Loading group directory from: %s\n", gdpath)
+		err = ctx.ID.Groups.LoadFromFile(gdpath)
+		if err != nil {
+			fmt.Println("  Loading group directory failed!")
 			log.Fatal(err)
 		}
 	}
@@ -207,10 +219,18 @@ func receiveLoop(tid o3.ThreemaID, ctx o3.SessionContext, receiveMsgChan <-chan 
 			confirmMsg(ctx, msg, sendMsgChan)
 		case o3.GroupTextMessage:
 			fmt.Printf("  %s for Group [%x] created by [%s]:\n%s\n", msg.Sender(), msg.GroupID(), msg.GroupCreator(), msg.Text())
+			group, ok := ctx.ID.Groups.Get(msg.GroupCreator(), msg.GroupID())
+			if ok {
+				ctx.SendGroupTextMessage(group, "This is a group reply!", sendMsgChan)
+			}
 		case o3.GroupManageSetNameMessage:
 			fmt.Printf("  Group [%x] is now called %s\n", msg.GroupID(), msg.Name())
+			ctx.ID.Groups.Upsert(o3.Group{CreatorID: msg.Sender(), GroupID: msg.GroupID(), Name: msg.Name()})
+			ctx.ID.Groups.SaveToFile(gdpath)
 		case o3.GroupManageSetMembersMessage:
 			fmt.Printf("  Group [%x] now includes %v\n", msg.GroupID(), msg.Members())
+			ctx.ID.Groups.Upsert(o3.Group{CreatorID: msg.Sender(), GroupID: msg.GroupID(), Members: msg.Members()})
+			ctx.ID.Groups.SaveToFile(gdpath)
 		case o3.GroupMemberLeftMessage:
 			fmt.Printf("  Member [%s] left the Group [%x]\n", msg.Sender(), msg.GroupID())
 		case o3.DeliveryReceiptMessage:
